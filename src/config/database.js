@@ -6,7 +6,7 @@ module.exports = {
   database: 'fastfeet',
   define: {
     timestamps: true,
-    uderscored: true,
+    underscored: true,
     underscoredAll: true,
   },
 };
