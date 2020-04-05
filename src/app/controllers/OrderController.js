@@ -1,8 +1,21 @@
+import {
+  startOfDay,
+  parseISO,
+  addHours,
+  isAfter,
+  isBefore,
+  format,
+} from 'date-fns';
+import pt from 'date-fns/locale/pt';
+
 import * as Yup from 'yup';
 import Order from '../models/Order';
 import Recipient from '../models/Recipient';
 import Deliveryman from '../models/Deliveryman';
 import File from '../models/File';
+import Notification from '../schemas/Notification';
+
+import Mail from '../../lib/Mail';
 
 class OrderController {
   async store(req, res) {
@@ -38,7 +51,25 @@ class OrderController {
       product,
     });
 
+    const { name, cep } = await Recipient.findByPk(recipient_id);
+
+    await Notification.create({
+      content: `Nova encomenda foi feita em seu nome por ${name} com CEP de ${cep}`,
+      deliveryman: deliveryman_id,
+    });
+
     const { id } = order;
+
+    await Mail.sendMail({
+      to: `${deliverymanExist.name} <${deliverymanExist.email}>`,
+      subject: 'Order stored',
+      template: 'store',
+      context: {
+        deliveryman: deliverymanExist.name,
+        recipient: recipientExist.name,
+        product,
+      },
+    });
 
     return res.json({
       id,
@@ -90,7 +121,15 @@ class OrderController {
       return res.status(400).json({ error: 'Validation fails' });
     }
 
-    const { recipient_id, deliveryman_id } = req.body;
+    const { recipient_id, deliveryman_id, start_date } = req.body;
+
+    const { id } = req.params;
+
+    const orderExist = await Order.findByPk(id);
+
+    if (!orderExist) {
+      return res.status(400).json({ error: 'Order does not exist' });
+    }
 
     if (recipient_id) {
       const recipientExist = await Recipient.findByPk(recipient_id);
@@ -108,11 +147,75 @@ class OrderController {
       }
     }
 
-    return res.json();
+    if (start_date) {
+      const startDate = addHours(startOfDay(new Date()), 8);
+      const endDate = addHours(startOfDay(new Date()), 18);
+
+      if (
+        isBefore(parseISO(start_date), startDate) ||
+        isAfter(parseISO(start_date), endDate)
+      ) {
+        return res.status(400).json({
+          error: 'You can only take this product at 8:00 a.m until 6:00 p.m',
+        });
+      }
+    }
+
+    const { product } = await orderExist.update(req.body);
+
+    return res.json({
+      id,
+      product,
+      recipient_id,
+      deliveryman_id,
+    });
   }
 
   async delete(req, res) {
-    return res.json();
+    const { id } = req.params;
+
+    const order = await Order.findByPk(id, {
+      include: [
+        {
+          model: Recipient,
+          as: 'recipient',
+          attributes: ['name'],
+        },
+        {
+          model: Deliveryman,
+          as: 'deliveryman',
+          attributes: ['name', 'email'],
+        },
+      ],
+    });
+
+    if (!order) {
+      return res.status(400).json({ error: 'Order does not exist' });
+    }
+
+    const canceled_at = new Date();
+
+    await order.update({
+      canceled_at,
+    });
+
+    const formattedDate = format(canceled_at, "dd 'de' MMMM', ás' H:mm'h'", {
+      locale: pt,
+    });
+
+    await Mail.sendMail({
+      to: `${order.deliveryman.name} <${order.deliveryman.email}>`,
+      subject: 'Order cancellation',
+      template: 'cancellation',
+      context: {
+        deliveryman: order.deliveryman.name,
+        recipient: order.recipient.name,
+        product: order.product,
+        date: formattedDate,
+      },
+    });
+
+    return res.json(order);
   }
 }
 
