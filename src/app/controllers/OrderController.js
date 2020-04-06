@@ -1,12 +1,4 @@
-import {
-  startOfDay,
-  parseISO,
-  addHours,
-  isAfter,
-  isBefore,
-  format,
-} from 'date-fns';
-import pt from 'date-fns/locale/pt';
+import { startOfDay, parseISO, addHours, isAfter, isBefore } from 'date-fns';
 
 import * as Yup from 'yup';
 import Order from '../models/Order';
@@ -14,8 +6,10 @@ import Recipient from '../models/Recipient';
 import Deliveryman from '../models/Deliveryman';
 import File from '../models/File';
 import Notification from '../schemas/Notification';
+import CancellationMail from '../Jobs/CancellationMail';
 
 import Mail from '../../lib/Mail';
+import Queue from '../../lib/Queue';
 
 class OrderController {
   async store(req, res) {
@@ -193,26 +187,20 @@ class OrderController {
       return res.status(400).json({ error: 'Order does not exist' });
     }
 
-    const canceled_at = new Date();
+    const { canceled_at } = order;
+
+    if (canceled_at != null) {
+      return res.status(401).json({ erro: 'This order is already cancelled' });
+    }
+
+    const new_canceled_at = new Date();
 
     await order.update({
-      canceled_at,
+      canceled_at: new_canceled_at,
     });
 
-    const formattedDate = format(canceled_at, "dd 'de' MMMM', ás' H:mm'h'", {
-      locale: pt,
-    });
-
-    await Mail.sendMail({
-      to: `${order.deliveryman.name} <${order.deliveryman.email}>`,
-      subject: 'Order cancellation',
-      template: 'cancellation',
-      context: {
-        deliveryman: order.deliveryman.name,
-        recipient: order.recipient.name,
-        product: order.product,
-        date: formattedDate,
-      },
+    Queue.add(CancellationMail.key, {
+      order,
     });
 
     return res.json(order);

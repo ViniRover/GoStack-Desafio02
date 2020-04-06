@@ -25,7 +25,7 @@ routes.put(
   DeliveriesController.update
 );
 
-routes.post('/problem', ProblemController.store);
+routes.post('/problems', ProblemController.store);
 
 routes.use(authMidlleware);
 routes.post('/recipient', RecipientController.store);
@@ -42,6 +42,10 @@ routes.post('/orders', OrderController.store);
 routes.put('/orders/:id', OrderController.update);
 routes.get('/orders', OrderController.index);
 routes.delete('/orders/:id', OrderController.delete);
+
+routes.get('/problems', ProblemController.index);
+routes.get('/problems/:delivery_id', ProblemController.index);
+routes.delete('/problems/:id/cancel-delivery', ProblemController.delete);
 
 routes.post('/files', upload.single('file'), FileController.store);
 
