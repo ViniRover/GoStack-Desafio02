@@ -7,8 +7,8 @@ import Deliveryman from '../models/Deliveryman';
 import File from '../models/File';
 import Notification from '../schemas/Notification';
 import CancellationMail from '../Jobs/CancellationMail';
+import StoreMail from '../Jobs/StoreMail';
 
-import Mail from '../../lib/Mail';
 import Queue from '../../lib/Queue';
 
 class OrderController {
@@ -54,15 +54,10 @@ class OrderController {
 
     const { id } = order;
 
-    await Mail.sendMail({
-      to: `${deliverymanExist.name} <${deliverymanExist.email}>`,
-      subject: 'Order stored',
-      template: 'store',
-      context: {
-        deliveryman: deliverymanExist.name,
-        recipient: recipientExist.name,
-        product,
-      },
+    Queue.add(StoreMail.key, {
+      deliverymanExist,
+      recipientExist,
+      product,
     });
 
     return res.json({
